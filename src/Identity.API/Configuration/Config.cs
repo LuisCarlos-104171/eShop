@@ -75,6 +75,28 @@
                 },
                 new Client
                 {
+                    ClientId = "loadtest",
+                    ClientName = "LoadTesting Client",
+                    ClientSecrets = new List<Secret>
+                    {
+                        new Secret("secret".Sha256())
+                    },
+                    AllowedGrantTypes = GrantTypes.Code,
+                    AllowedScopes = new List<string>
+                    {
+                        IdentityServerConstants.StandardScopes.OpenId,
+                        IdentityServerConstants.StandardScopes.Profile,
+                        IdentityServerConstants.StandardScopes.OfflineAccess,
+                        "orders",
+                        "basket",
+                        "webshoppingagg",
+                        "webhooks"
+                    },
+                    AccessTokenLifetime = 60*60*2, // 2 hours
+                    IdentityTokenLifetime= 60*60*2 // 2 hours
+                },
+                new Client
+                {
                     ClientId = "webapp",
                     ClientName = "WebApp Client",
                     ClientSecrets = new List<Secret>
