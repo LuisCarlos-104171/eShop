@@ -1,7 +1,9 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using eShop.Basket.API.Repositories;
 using eShop.Basket.API.Extensions;
 using eShop.Basket.API.Model;
+using eShop.ServiceDefaults;
 
 namespace eShop.Basket.API.Grpc;
 
@@ -12,12 +14,18 @@ public class BasketService(
     [AllowAnonymous]
     public override async Task<CustomerBasketResponse> GetBasket(GetBasketRequest request, ServerCallContext context)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.BasketActivitySource.StartActivity("GetBasket");
+        
         var userId = context.GetUserIdentity();
         if (string.IsNullOrEmpty(userId))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "User not authenticated");
             return new();
         }
 
+        // Add user ID for masking
+        activity?.SetTag("user.id", userId);
+        
         if (logger.IsEnabled(LogLevel.Debug))
         {
             logger.LogDebug("Begin GetBasketById call from method {Method} for basket id {Id}", context.Method, userId);
@@ -27,20 +35,31 @@ public class BasketService(
 
         if (data is not null)
         {
+            activity?.SetTag("basket.items_count", data.Items.Count);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             return MapToCustomerBasketResponse(data);
         }
 
+        activity?.SetTag("basket.empty", true);
+        activity?.SetStatus(ActivityStatusCode.Ok);
         return new();
     }
 
     public override async Task<CustomerBasketResponse> UpdateBasket(UpdateBasketRequest request, ServerCallContext context)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.BasketActivitySource.StartActivity("UpdateBasket");
+        
         var userId = context.GetUserIdentity();
         if (string.IsNullOrEmpty(userId))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "User not authenticated");
             ThrowNotAuthenticated();
         }
 
+        // Add user ID for masking
+        activity?.SetTag("user.id", userId);
+        activity?.SetTag("basket.items_count", request.Items.Count);
+        
         if (logger.IsEnabled(LogLevel.Debug))
         {
             logger.LogDebug("Begin UpdateBasket call from method {Method} for basket id {Id}", context.Method, userId);
@@ -50,21 +69,31 @@ public class BasketService(
         var response = await repository.UpdateBasketAsync(customerBasket);
         if (response is null)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "Basket not found");
             ThrowBasketDoesNotExist(userId);
         }
 
+        activity?.SetStatus(ActivityStatusCode.Ok);
         return MapToCustomerBasketResponse(response);
     }
 
     public override async Task<DeleteBasketResponse> DeleteBasket(DeleteBasketRequest request, ServerCallContext context)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.BasketActivitySource.StartActivity("DeleteBasket");
+        
         var userId = context.GetUserIdentity();
         if (string.IsNullOrEmpty(userId))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "User not authenticated");
             ThrowNotAuthenticated();
         }
 
+        // Add user ID for masking
+        activity?.SetTag("user.id", userId);
+        
         await repository.DeleteBasketAsync(userId);
+        
+        activity?.SetStatus(ActivityStatusCode.Ok);
         return new();
     }
 

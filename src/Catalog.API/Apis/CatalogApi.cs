@@ -163,7 +163,14 @@ public static class CatalogApi
         [AsParameters] CatalogServices services,
         [Description("List of ids for catalog items to return")] int[] ids)
     {
-        var items = await services.Context.CatalogItems.Where(item => ids.Contains(item.Id)).ToListAsync();
+        // Convert the array to a list to avoid issues with array parameters in EF Core queries
+        var idsList = ids.ToList();
+        
+        // Use the List<int> instead of the array directly
+        var items = await services.Context.CatalogItems
+            .Where(item => idsList.Contains(item.Id))
+            .ToListAsync();
+            
         return TypedResults.Ok(items);
     }
 

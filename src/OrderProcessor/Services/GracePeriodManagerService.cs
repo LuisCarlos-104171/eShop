@@ -1,7 +1,9 @@
-﻿using eShop.EventBus.Abstractions;
+﻿using System.Diagnostics;
+using eShop.EventBus.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using eShop.OrderProcessor.Events;
+using eShop.ServiceDefaults;
 
 namespace eShop.OrderProcessor.Services
 {
@@ -43,20 +45,59 @@ namespace eShop.OrderProcessor.Services
 
         private async Task CheckConfirmedGracePeriodOrders()
         {
+            // Create a new activity for processing grace period orders
+            using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("CheckGracePeriodOrders");
+            
             if (logger.IsEnabled(LogLevel.Debug))
             {
                 logger.LogDebug("Checking confirmed grace period orders");
             }
 
-            var orderIds = await GetConfirmedGracePeriodOrders();
-
-            foreach (var orderId in orderIds)
+            try 
             {
-                var confirmGracePeriodEvent = new GracePeriodConfirmedIntegrationEvent(orderId);
+                var orderIds = await GetConfirmedGracePeriodOrders();
+                
+                activity?.SetTag("orders.count", orderIds.Count);
+                
+                if (orderIds.Count == 0)
+                {
+                    // No orders to process
+                    activity?.SetStatus(ActivityStatusCode.Ok);
+                    return;
+                }
 
-                logger.LogInformation("Publishing integration event: {IntegrationEventId} - ({@IntegrationEvent})", confirmGracePeriodEvent.Id, confirmGracePeriodEvent);
+                foreach (var orderId in orderIds)
+                {
+                    // Create a child activity for each order being processed
+                    using var orderActivity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity(
+                        OpenTelemetryCheckoutExtensions.CheckoutOperations.ConfirmStock);
+                    
+                    orderActivity?.SetTag("order.id", orderId);
+                    
+                    try 
+                    {
+                        var confirmGracePeriodEvent = new GracePeriodConfirmedIntegrationEvent(orderId);
 
-                await eventBus.PublishAsync(confirmGracePeriodEvent);
+                        logger.LogInformation("Publishing integration event: {IntegrationEventId} - ({@IntegrationEvent})", 
+                            confirmGracePeriodEvent.Id, confirmGracePeriodEvent);
+
+                        await eventBus.PublishAsync(confirmGracePeriodEvent);
+                        
+                        orderActivity?.SetStatus(ActivityStatusCode.Ok);
+                    }
+                    catch (Exception ex)
+                    {
+                        orderActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                        logger.LogError(ex, "Error publishing GracePeriodConfirmedIntegrationEvent for order {OrderId}", orderId);
+                    }
+                }
+                
+                activity?.SetStatus(ActivityStatusCode.Ok);
+            }
+            catch (Exception ex)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                logger.LogError(ex, "Error checking confirmed grace period orders");
             }
         }
 
@@ -64,6 +105,8 @@ namespace eShop.OrderProcessor.Services
         {
             try
             {
+                using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("QueryGracePeriodOrders");
+                
                 using var conn = dataSource.CreateConnection();
                 using var command = conn.CreateCommand();
                 command.CommandText = """
@@ -81,15 +124,17 @@ namespace eShop.OrderProcessor.Services
                 {
                     ids.Add(reader.GetInt32(0));
                 }
+                
+                activity?.SetTag("orders.count", ids.Count);
+                activity?.SetStatus(ActivityStatusCode.Ok);
 
                 return ids;
             }
             catch (NpgsqlException exception)
             {
                 logger.LogError(exception, "Fatal error establishing database connection");
+                throw;
             }
-
-            return [];
         }
     }
 }

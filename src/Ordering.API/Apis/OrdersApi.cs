@@ -1,4 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http.HttpResults;
+using System.Diagnostics;
+using eShop.ServiceDefaults;
 using CardType = eShop.Ordering.API.Application.Queries.CardType;
 using Order = eShop.Ordering.API.Application.Queries.Order;
 
@@ -24,8 +26,13 @@ public static class OrdersApi
         CancelOrderCommand command,
         [AsParameters] OrderServices services)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("CancelOrder");
+        activity?.SetTag("order.number", command.OrderNumber);
+        activity?.SetTag("order.request_id", requestId);
+        
         if (requestId == Guid.Empty)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "Empty request ID");
             return TypedResults.BadRequest("Empty GUID is not valid for request ID");
         }
 
@@ -42,9 +49,11 @@ public static class OrdersApi
 
         if (!commandResult)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "Cancel order failed to process");
             return TypedResults.Problem(detail: "Cancel order failed to process.", statusCode: 500);
         }
 
+        activity?.SetStatus(ActivityStatusCode.Ok);
         return TypedResults.Ok();
     }
 
@@ -53,8 +62,13 @@ public static class OrdersApi
         ShipOrderCommand command,
         [AsParameters] OrderServices services)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("ShipOrder");
+        activity?.SetTag("order.number", command.OrderNumber);
+        activity?.SetTag("order.request_id", requestId);
+        
         if (requestId == Guid.Empty)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "Empty request ID");
             return TypedResults.BadRequest("Empty GUID is not valid for request ID");
         }
 
@@ -71,40 +85,65 @@ public static class OrdersApi
 
         if (!commandResult)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "Ship order failed to process");
             return TypedResults.Problem(detail: "Ship order failed to process.", statusCode: 500);
         }
 
+        activity?.SetStatus(ActivityStatusCode.Ok);
         return TypedResults.Ok();
     }
 
     public static async Task<Results<Ok<Order>, NotFound>> GetOrderAsync(int orderId, [AsParameters] OrderServices services)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("GetOrder");
+        activity?.SetTag("order.id", orderId);
+        
         try
         {
             var order = await services.Queries.GetOrderAsync(orderId);
+            activity?.SetStatus(ActivityStatusCode.Ok);
             return TypedResults.Ok(order);
         }
-        catch
+        catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             return TypedResults.NotFound();
         }
     }
 
     public static async Task<Ok<IEnumerable<OrderSummary>>> GetOrdersByUserAsync([AsParameters] OrderServices services)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("GetOrdersByUser");
+        
         var userId = services.IdentityService.GetUserIdentity();
+        // Mask user ID in telemetry
+        activity?.SetTag("user.id.masked", $"{userId[0]}***");
+        
         var orders = await services.Queries.GetOrdersFromUserAsync(userId);
+        activity?.SetTag("order.count", orders.Count());
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        
         return TypedResults.Ok(orders);
     }
 
     public static async Task<Ok<IEnumerable<CardType>>> GetCardTypesAsync(IOrderQueries orderQueries)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("GetCardTypes");
+        
         var cardTypes = await orderQueries.GetCardTypesAsync();
+        activity?.SetTag("cardtype.count", cardTypes.Count());
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        
         return TypedResults.Ok(cardTypes);
     }
 
     public static async Task<OrderDraftDTO> CreateOrderDraftAsync(CreateOrderDraftCommand command, [AsParameters] OrderServices services)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity("CreateOrderDraft");
+        // Mask buyer ID in telemetry
+        activity?.SetTag("buyer.id.masked", $"{command.BuyerId[0]}***");
+        activity?.SetTag("order.items", command.Items.Count());
+        
         services.Logger.LogInformation(
             "Sending command: {CommandName} - {IdProperty}: {CommandId} ({@Command})",
             command.GetGenericTypeName(),
@@ -112,7 +151,10 @@ public static class OrdersApi
             command.BuyerId,
             command);
 
-        return await services.Mediator.Send(command);
+        var result = await services.Mediator.Send(command);
+        activity?.SetStatus(ActivityStatusCode.Ok);
+        
+        return result;
     }
 
     public static async Task<Results<Ok, BadRequest<string>>> CreateOrderAsync(
@@ -120,24 +162,32 @@ public static class OrdersApi
         CreateOrderRequest request,
         [AsParameters] OrderServices services)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity(
+            OpenTelemetryCheckoutExtensions.CheckoutOperations.SubmitOrder);
         
-        //mask the credit card number
+        activity?.SetTag("order.request_id", requestId);
+        activity?.SetTag("order.items", request.Items.Count);
+        // Only include safe information in telemetry
+        activity?.SetTag("order.country", request.Country);
+        
+        // Mask the credit card number for logging
+        var maskedCCNumber = request.CardNumber.Substring(request.CardNumber.Length - 4).PadLeft(request.CardNumber.Length, 'X');
         
         services.Logger.LogInformation(
             "Sending command: {CommandName} - {IdProperty}: {CommandId}",
             request.GetGenericTypeName(),
             nameof(request.UserId),
-            request.UserId); //don't log the request as it has CC number
+            request.UserId); // Don't log the request as it has CC number
 
         if (requestId == Guid.Empty)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, "RequestId is missing");
             services.Logger.LogWarning("Invalid IntegrationEvent - RequestId is missing - {@IntegrationEvent}", request);
             return TypedResults.BadRequest("RequestId is missing.");
         }
 
         using (services.Logger.BeginScope(new List<KeyValuePair<string, object>> { new("IdentifiedCommandId", requestId) }))
         {
-            var maskedCCNumber = request.CardNumber.Substring(request.CardNumber.Length - 4).PadLeft(request.CardNumber.Length, 'X');
             var createOrderCommand = new CreateOrderCommand(request.Items, request.UserId, request.UserName, request.City, request.Street,
                 request.State, request.Country, request.ZipCode,
                 maskedCCNumber, request.CardHolderName, request.CardExpiration,
@@ -156,10 +206,12 @@ public static class OrdersApi
 
             if (result)
             {
+                activity?.SetStatus(ActivityStatusCode.Ok);
                 services.Logger.LogInformation("CreateOrderCommand succeeded - RequestId: {RequestId}", requestId);
             }
             else
             {
+                activity?.SetStatus(ActivityStatusCode.Error, "CreateOrderCommand failed");
                 services.Logger.LogWarning("CreateOrderCommand failed - RequestId: {RequestId}", requestId);
             }
 

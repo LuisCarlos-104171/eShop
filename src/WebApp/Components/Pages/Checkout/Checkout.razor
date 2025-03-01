@@ -1,6 +1,8 @@
 ﻿@page "/checkout"
 @using System.Globalization
 @using System.ComponentModel.DataAnnotations
+@using System.Diagnostics
+@using eShop.ServiceDefaults
 @inject BasketState Basket
 @inject NavigationManager Nav
 @attribute [Authorize]
@@ -73,6 +75,9 @@
 
     protected override void OnInitialized()
     {
+        // Start an activity for checkout page initialization
+        using var activity = OpenTelemetryCheckoutExtensions.CheckoutActivitySource.StartActivity("CheckoutPageInit");
+        
         if (Info is null)
         {
             PopulateFormWithDefaultInfo();
@@ -80,10 +85,15 @@
 
         editContext = new EditContext(Info!);
         extraMessages = new ValidationMessageStore(editContext);
+        
+        activity?.SetStatus(ActivityStatusCode.Ok);
     }
 
     private void PopulateFormWithDefaultInfo()
     {
+        // Start an activity for retrieving default checkout info
+        using var activity = OpenTelemetryCheckoutExtensions.CheckoutActivitySource.StartActivity("PopulateCheckoutDefaults");
+        
         Info = new BasketCheckoutInfo
         {
             Street = ReadClaim("address_street"),
@@ -93,6 +103,9 @@
             ZipCode = ReadClaim("address_zip_code"),
             RequestId = Guid.NewGuid()
         };
+        
+        activity?.SetTag("checkout.request_id", Info.RequestId);
+        activity?.SetStatus(ActivityStatusCode.Ok);
 
         string? ReadClaim(string type)
             => HttpContext.User.Claims.FirstOrDefault(x => x.Type == type)?.Value;
@@ -100,28 +113,80 @@
 
     private async Task HandleSubmitAsync()
     {
-        await PerformCustomValidationAsync();
-
-        if (editContext.Validate())
+        // Start an activity for form submission
+        using var activity = OpenTelemetryCheckoutExtensions.CheckoutActivitySource.StartActivity("HandleCheckoutSubmit");
+        
+        try
         {
-            await HandleValidSubmitAsync();
+            await PerformCustomValidationAsync();
+
+            if (editContext.Validate())
+            {
+                await HandleValidSubmitAsync();
+                activity?.SetStatus(ActivityStatusCode.Ok);
+            }
+            else
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "Checkout validation failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
         }
     }
 
     private async Task HandleValidSubmitAsync()
     {
-        Info.CardTypeId = 1;
-        await Basket.CheckoutAsync(Info);
-        Nav.NavigateTo("user/orders");
+        // Start an activity for checkout submission
+        using var activity = OpenTelemetryCheckoutExtensions.CheckoutActivitySource.StartActivity(
+            OpenTelemetryCheckoutExtensions.CheckoutOperations.InitiateCheckout);
+        
+        activity?.SetTag("checkout.request_id", Info.RequestId);
+        
+        try
+        {
+            Info.CardTypeId = 1;
+            await Basket.CheckoutAsync(Info);
+            
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            Nav.NavigateTo("user/orders");
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
     }
 
     private async Task PerformCustomValidationAsync()
     {
-        extraMessages.Clear();
-
-        if ((await Basket.GetBasketItemsAsync()).Count == 0)
+        // Start an activity for checkout validation
+        using var activity = OpenTelemetryCheckoutExtensions.CheckoutActivitySource.StartActivity(
+            OpenTelemetryCheckoutExtensions.CheckoutOperations.ValidateCart);
+        
+        try
         {
-            extraMessages.Add(new FieldIdentifier(Info, ""), "Your cart is empty");
+            extraMessages.Clear();
+
+            var basketItems = await Basket.GetBasketItemsAsync();
+            activity?.SetTag("basket.items_count", basketItems.Count);
+            
+            if (basketItems.Count == 0)
+            {
+                extraMessages.Add(new FieldIdentifier(Info, ""), "Your cart is empty");
+                activity?.SetStatus(ActivityStatusCode.Error, "Empty cart");
+            }
+            else
+            {
+                activity?.SetStatus(ActivityStatusCode.Ok);
+            }
+        }
+        catch (Exception ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
         }
     }
 

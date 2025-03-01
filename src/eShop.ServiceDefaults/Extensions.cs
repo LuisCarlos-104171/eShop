@@ -3,11 +3,13 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.Metrics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using System.Diagnostics.Metrics;
 
 namespace eShop.ServiceDefaults;
 
@@ -43,8 +45,52 @@ public static partial class Extensions
         builder.AddDefaultHealthChecks();
 
         builder.ConfigureOpenTelemetry();
+        
+        // Add our checkout-specific telemetry
+        builder.Services.AddCheckoutTelemetry();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Adds the checkout telemetry to the service collection
+    /// </summary>
+    public static IServiceCollection AddCheckoutTelemetry(this IServiceCollection services)
+    {
+        // Register checkout process metrics
+        services.ConfigureOpenTelemetryMeterProvider(meter =>
+        {
+            meter.AddMeter("eShop.Checkout.Metrics");
+        });
+        
+        // Register checkout metrics with a single meter
+        services.AddSingleton(sp => 
+        {
+            var meter = new Meter("eShop.Checkout.Metrics", "1.0.0");
+            
+            // Register counters for the checkout process
+            meter.CreateCounter<long>("checkout_initiated_total", 
+                description: "Count of checkout processes initiated");
+                
+            meter.CreateCounter<long>("orders_created_total", 
+                description: "Count of orders successfully created");
+                
+            meter.CreateCounter<long>("payments_processed_total", 
+                description: "Count of payments processed");
+                
+            meter.CreateCounter<long>("payments_succeeded_total", 
+                description: "Count of payments that succeeded");
+                
+            meter.CreateCounter<long>("payments_failed_total", 
+                description: "Count of payments that failed");
+                
+            meter.CreateHistogram<double>("checkout_duration_seconds", 
+                description: "Duration of the checkout process in seconds");
+                
+            return meter;
+        });
+        
+        return services;
     }
 
     public static IHostApplicationBuilder ConfigureOpenTelemetry(this IHostApplicationBuilder builder)
@@ -61,7 +107,8 @@ public static partial class Extensions
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddMeter("Experimental.Microsoft.Extensions.AI");
+                    .AddMeter("Experimental.Microsoft.Extensions.AI")
+                    .AddMeter("eShop.Checkout.Metrics"); // Add custom checkout metrics
             })
             .WithTracing(tracing =>
             {
@@ -71,10 +118,23 @@ public static partial class Extensions
                     tracing.SetSampler(new AlwaysOnSampler());
                 }
 
-                tracing.AddAspNetCoreInstrumentation()
+                tracing.AddAspNetCoreInstrumentation(options => 
+                    {
+                        options.RecordException = true;
+                        options.EnrichWithHttpRequest = (activity, request) =>
+                        {
+                            // Don't include potentially sensitive route parameters in traces
+                            activity.DisplayName = $"{request.Method} {request.Path}";
+                        };
+                    })
                     .AddGrpcClientInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddSource("Experimental.Microsoft.Extensions.AI");                    
+                    .AddSource("Experimental.Microsoft.Extensions.AI")
+                    // Add our sources for the checkout flow
+                    .AddSource(OpenTelemetryCheckoutExtensions.CheckoutActivitySource.Name)
+                    .AddSource(OpenTelemetryCheckoutExtensions.OrderingActivitySource.Name)
+                    .AddSource(OpenTelemetryCheckoutExtensions.BasketActivitySource.Name)
+                    .AddSource(OpenTelemetryCheckoutExtensions.PaymentActivitySource.Name);
             });
 
         builder.AddOpenTelemetryExporters();
@@ -91,6 +151,14 @@ public static partial class Extensions
             builder.Services.Configure<OpenTelemetryLoggerOptions>(logging => logging.AddOtlpExporter());
             builder.Services.ConfigureOpenTelemetryMeterProvider(metrics => metrics.AddOtlpExporter());
             builder.Services.ConfigureOpenTelemetryTracerProvider(tracing => tracing.AddOtlpExporter());
+        }
+        
+        // For development logging, we'll just use standard loggers
+        // instead of the console exporter which isn't available
+        if (builder.Environment.IsDevelopment())
+        {
+            builder.Logging.AddConsole();
+            builder.Logging.AddDebug();
         }
 
         return builder;

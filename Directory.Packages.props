@@ -9,6 +9,7 @@
     <GrpcVersion>2.67.0</GrpcVersion>
     <DuendeVersion>7.0.8</DuendeVersion>
     <ApiVersioningVersion>8.1.0</ApiVersioningVersion>
+    <OpenTelemetryVersion>1.11.0</OpenTelemetryVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Version together with Aspire -->
@@ -46,6 +47,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="$(AspnetVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Identity.Stores" Version="$(AspnetVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.6.0" />
     <PackageVersion Include="MSTest.TestAdapter" Version="3.7.2" />
     <PackageVersion Include="MSTest.TestFramework" Version="3.7.2" />
     <!-- Version together with EF -->
@@ -53,6 +55,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.1" />
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="NSubstitute.Analyzers.CSharp" Version="1.0.17" />
+    <PackageVersion Include="OpenTelemetry" Version="1.11.1" />
     <PackageVersion Include="Pgvector" Version="0.3.0" />
     <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.2.1" />
     <!-- Version together with runtime -->
@@ -67,12 +70,15 @@
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="9.1.0-preview.1.25064.3" />
     <PackageVersion Include="Microsoft.Extensions.AI.Ollama" Version="9.1.0-preview.1.25064.3" />
     <!-- Open Telemetry -->
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.11.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="$(OpenTelemetryVersion)" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="$(OpenTelemetryVersion)" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.10.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.GrpcNetClient" Version="1.6.0-beta.3" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.10.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.10.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Jaeger" Version="1.6.0-rc.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.SqlClient" Version="1.6.0-beta.3" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.EventCounters" Version="1.5.1-alpha.1" />
     <!-- IdentityServer -->
     <PackageVersion Include="Duende.IdentityServer" Version="$(DuendeVersion)" />
     <PackageVersion Include="Duende.IdentityServer.AspNetIdentity" Version="$(DuendeVersion)" />
@@ -99,6 +105,6 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.2.0" />
     <PackageVersion Include="IdentityModel" Version="7.0.0" />
-    <PackageVersion Include="Scalar.AspNetCore" Version="1.2.72"/>
+    <PackageVersion Include="Scalar.AspNetCore" Version="1.2.72" />
   </ItemGroup>
 </Project>

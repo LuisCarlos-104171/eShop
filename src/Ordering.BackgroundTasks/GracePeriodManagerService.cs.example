@@ -1,0 +1,82 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using eShop.ServiceDefaults;
+using Ordering.BackgroundTasks.Events;
+
+namespace Ordering.BackgroundTasks;
+
+public class GracePeriodManagerService : BackgroundService
+{
+    private readonly ILogger<GracePeriodManagerService> _logger;
+    private readonly IOrderingIntegrationEventService _orderingIntegrationEventService;
+    private readonly IOrderRepository _orderRepository;
+    
+    public GracePeriodManagerService(
+        ILogger<GracePeriodManagerService> logger,
+        IOrderingIntegrationEventService orderingIntegrationEventService,
+        IOrderRepository orderRepository)
+    {
+        _logger = logger;
+        _orderingIntegrationEventService = orderingIntegrationEventService;
+        _orderRepository = orderRepository;
+    }
+    
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _logger.LogDebug("GracePeriodManagerService is starting.");
+
+        stoppingToken.Register(() => _logger.LogDebug("GracePeriodManagerService background task is stopping."));
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            // Start an activity for the entire check cycle
+            using var checkCycleActivity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity(
+                "GracePeriodCheckCycle");
+            
+            checkCycleActivity?.SetTag("gracePeriod.checkType", "scheduled");
+            
+            try
+            {
+                // Get orders that have passed their grace period
+                var ordersToConfirm = await OpenTelemetryCheckoutExtensions.TraceServiceCallAsync(
+                    OpenTelemetryCheckoutExtensions.OrderingActivitySource,
+                    "GetOrdersPassedGracePeriod",
+                    () => _orderRepository.GetOrdersPassedGracePeriodAsync(),
+                    null);
+                
+                checkCycleActivity?.SetTag("gracePeriod.ordersToConfirmCount", ordersToConfirm.Count);
+                
+                foreach (var order in ordersToConfirm)
+                {
+                    // Start an activity for each order being processed
+                    using var gracePeriodActivity = OpenTelemetryCheckoutExtensions.StartGracePeriodActivity(order.Id);
+                    
+                    try
+                    {
+                        // Mark the order as confirmed in the database
+                        await OpenTelemetryCheckoutExtensions.TraceServiceCallAsync(
+                            OpenTelemetryCheckoutExtensions.OrderingActivitySource,
+                            "ConfirmOrderAfterGracePeriod",
+                            async () => 
+                            {
+                                order.SetAwaitingValidationStatus();
+                                
+                                // Update the order in the database
+                                await _orderRepository.UnitOfWork.SaveChangesAsync();
+                                return true;
+                            },
+                            new Dictionary<string, object>
+                            {
+                                { "order.id", order.Id.ToString() },
+                                { "order.statusChange", "AwaitingValidation" }
+                            });
+                        
+                        // Publish integration event
+                        await OpenTelemetryCheckoutExtensions.TraceServiceCallAsync(
+                            OpenTelemetryCheckoutExtensions.OrderingActivitySource,
+                            "PublishGracePeriodConfirmedEvent
