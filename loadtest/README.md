@@ -8,6 +8,7 @@ This directory contains K6 load test scripts for the eShop application. The test
 - `catalog-test.js` - Tests browsing the catalog, including fetching items, details, brands, and types
 - `basket-test.js` - Tests basket operations including creating, updating, and retrieving baskets
 - `checkout-test.js` - Tests the entire checkout flow from creating a basket to placing an order
+- `ui-e2e-test.js` - End-to-end test that simulates user flow from UI through identity, catalog, basket, and ordering services
 
 ## Running Tests
 
@@ -46,6 +47,9 @@ npm run loadtest:basket
 
 # Run the checkout flow test
 npm run loadtest:checkout
+
+# Run the UI end-to-end test
+npm run loadtest:ui-e2e
 
 # Run all tests sequentially
 npm run loadtest:all
