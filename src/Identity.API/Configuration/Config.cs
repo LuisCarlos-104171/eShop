@@ -81,7 +81,7 @@
                     {
                         new Secret("secret".Sha256())
                     },
-                    AllowedGrantTypes = GrantTypes.Code,
+                    AllowedGrantTypes = GrantTypes.ResourceOwnerPassword,
                     AllowedScopes = new List<string>
                     {
                         IdentityServerConstants.StandardScopes.OpenId,
@@ -92,6 +92,7 @@
                         "webshoppingagg",
                         "webhooks"
                     },
+                    AllowOfflineAccess = true,
                     AccessTokenLifetime = 60*60*2, // 2 hours
                     IdentityTokenLifetime= 60*60*2 // 2 hours
                 },

@@ -37,16 +37,15 @@ export default function() {
   const identityServerUrl = 'https://localhost:5243'; // Replace with your actual URL
   const clientId = 'loadtest';             // Using existing client from config
   const clientSecret = 'secret';         // From your configuration
-  
+
   // User credentials - do not hardcode in production!
   const username = 'alice';
   const password = 'Pass123$';
-  
+
   // Request to get token
-  // Note: We're using client_credentials grant type as a fallback because
-  // your webapp client doesn't support password grant flow
+  // Using password grant type which is now properly configured for the loadtest client
   const tokenUrl = `${identityServerUrl}/connect/token`;
-  
+
   const payload = {
     client_id: clientId,
     client_secret: clientSecret,
@@ -55,26 +54,25 @@ export default function() {
     password: password,
     scope: 'openid profile orders basket'
   };
-  
+
   const params = {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
   };
-  
+
   // Make the authentication request
   const response = http.post(tokenUrl, payload, params);
-  console.log(response.status);
-  
+
   // Check if the request was successful
   const success = check(response, {
     'status is 200': (r) => r.status === 200,
     'has access token': (r) => r.json('access_token') !== undefined,
   });
-  
+
   // Add to our custom metric
   failRate.add(!success);
-  
+
   // If successful, we could make additional authenticated requests here
   if (success) {
     // Example of using the token (uncomment and customize if needed)
@@ -85,13 +83,13 @@ export default function() {
         Authorization: `Bearer ${token}`,
       },
     });
-    
+
     check(apiResponse, {
       'API request successful': (r) => r.status === 200,
     });
     */
   }
-  
+
   // Wait between iterations
   sleep(1);
 }
@@ -100,14 +98,14 @@ export default function() {
 export function setup() {
   const identityServerUrl = 'https://localhost:5243'; // Replace with your actual URL
   const res = http.get(`${identityServerUrl}/.well-known/openid-configuration`);
-  
+
   const success = check(res, {
     'Identity Server is reachable': (r) => r.status === 200,
   });
-  
+
   if (!success) {
     throw new Error('Cannot reach Identity Server. Please check the URL and try again.');
   }
-  
+
   return {};
 }
