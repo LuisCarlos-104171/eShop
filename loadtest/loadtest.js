@@ -27,6 +27,8 @@ export const options = {
     http_req_duration: ['p(95)<500'],    // 95% of requests should complete within 500ms
     'failed_requests': ['rate<0.1'],     // Less than 10% of requests should fail
   },
+  // Disable certificate validation for development/testing
+  insecureSkipTLSVerify: true,
 };
 
 // Main function executed for each virtual user

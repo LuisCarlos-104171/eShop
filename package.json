@@ -5,7 +5,13 @@
   "directories": {
     "test": "tests"
   },
-  "scripts": {},
+  "scripts": {
+    "loadtest": "k6 run loadtest/loadtest.js",
+    "loadtest:catalog": "k6 run loadtest/catalog-test.js",
+    "loadtest:basket": "k6 run loadtest/basket-test.js",
+    "loadtest:checkout": "k6 run loadtest/checkout-test.js",
+    "loadtest:all": "npm run loadtest && npm run loadtest:catalog && npm run loadtest:basket && npm run loadtest:checkout"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
