@@ -2,9 +2,6 @@ using System.Diagnostics.Metrics;
 
 namespace eShop.ServiceDefaults.Telemetry;
 
-/// <summary>
-/// Helper class for tracking checkout-related metrics
-/// </summary>
 public class CheckoutMetrics
 {
     private readonly Counter<long> _checkoutInitiatedCounter;
@@ -41,34 +38,10 @@ public class CheckoutMetrics
             description: "Duration of the checkout process in seconds");
     }
 
-    /// <summary>
-    /// Increment the counter for checkout initiations
-    /// </summary>
     public void CheckoutInitiated() => _checkoutInitiatedCounter.Add(1);
-
-    /// <summary>
-    /// Increment the counter for created orders
-    /// </summary>
     public void OrderCreated() => _ordersCreatedCounter.Add(1);
-
-    /// <summary>
-    /// Increment the counter for processed payments
-    /// </summary>
     public void PaymentProcessed() => _paymentsProcessedCounter.Add(1);
-
-    /// <summary>
-    /// Increment the counter for successful payments
-    /// </summary>
     public void PaymentSucceeded() => _paymentsSucceededCounter.Add(1);
-
-    /// <summary>
-    /// Increment the counter for failed payments
-    /// </summary>
     public void PaymentFailed() => _paymentsFailedCounter.Add(1);
-
-    /// <summary>
-    /// Record the duration of a checkout process
-    /// </summary>
-    /// <param name="durationSeconds">Duration in seconds</param>
     public void RecordCheckoutDuration(double durationSeconds) => _checkoutDurationHistogram.Record(durationSeconds);
 }

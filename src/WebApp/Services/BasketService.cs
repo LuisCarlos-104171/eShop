@@ -51,7 +51,6 @@ public class BasketService(GrpcBasketClient basketClient)
         try
         {
             var updatePayload = new UpdateBasketRequest();
-
             foreach (var item in basket)
             {
                 var updateItem = new GrpcBasketItem
@@ -79,7 +78,6 @@ public class BasketService(GrpcBasketClient basketClient)
         {
             result.Add(new BasketQuantity(item.ProductId, item.Quantity));
         }
-
         return result;
     }
 }

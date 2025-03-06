@@ -26,14 +26,11 @@ public class OrderingService(HttpClient httpClient)
 
     public async Task CreateOrder(CreateOrderRequest request, Guid requestId)
     {
-        // Start activity for order creation
         using var activity = OpenTelemetryCheckoutExtensions.OrderingActivitySource.StartActivity(
             OpenTelemetryCheckoutExtensions.CheckoutOperations.SubmitOrder);
         
         activity?.SetTag("order.request_id", requestId);
         activity?.SetTag("order.items_count", request.Items.Count);
-        
-        // Add user info and address data that will be masked
         activity?.SetTag("order.user.id", request.UserId);
         activity?.SetTag("order.user.name", request.UserName);
         activity?.SetTag("order.country", request.Country);
@@ -44,7 +41,6 @@ public class OrderingService(HttpClient httpClient)
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, remoteServiceBaseUrl);
             requestMessage.Headers.Add("x-requestid", requestId.ToString());
             
-            // Add trace context to the outgoing request (standard headers)
             if (Activity.Current != null)
             {
                 requestMessage.Headers.Add("traceparent", Activity.Current.Id);
