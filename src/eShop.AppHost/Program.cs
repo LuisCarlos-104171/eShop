@@ -15,6 +15,8 @@ var postgres = builder.AddPostgres("postgres")
 // Add Jaeger for distributed tracing with unique endpoint names
 // Fixed container image reference and using different port mappings
 var jaeger = builder.AddContainer("jaeger", "jaegertracing/jaeger", "2.3.0")
+    .WithArgs("--config", "/etc/jaeger/config.yml")
+    .WithBindMount("../../deploy/jaeger", "/etc/jaeger")
     .WithEndpoint(16687, 16686, name: "jaeger-ui")         // UI (changed host port)
     .WithEndpoint(14251, 14250, name: "jaeger-model")      // Model (changed host port)
     .WithEndpoint(14269, 14268, name: "jaeger-collector")  // Collector HTTP (changed host port)
