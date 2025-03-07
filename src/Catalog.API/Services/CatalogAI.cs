@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using Pgvector;
+using eShop.ServiceDefaults;
 
 namespace eShop.Catalog.API.Services;
 
@@ -33,42 +34,81 @@ public sealed class CatalogAI : ICatalogAI
     /// <inheritdoc/>
     public async ValueTask<IReadOnlyList<Vector>> GetEmbeddingsAsync(IEnumerable<CatalogItem> items)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("GenerateBatchEmbeddings");
+        var itemsList = items.ToList();
+        activity?.SetTag("catalog.batch_size", itemsList.Count);
+        
         if (IsEnabled)
         {
-            long timestamp = Stopwatch.GetTimestamp();
-
-            GeneratedEmbeddings<Embedding<float>> embeddings = await _embeddingGenerator.GenerateAsync(items.Select(CatalogItemToString));
-            var results = embeddings.Select(m => new Vector(m.Vector[0..EmbeddingDimensions])).ToList();
-
-            if (_logger.IsEnabled(LogLevel.Trace))
+            try
             {
-                _logger.LogTrace("Generated {EmbeddingsCount} embeddings in {ElapsedMilliseconds}s", results.Count, Stopwatch.GetElapsedTime(timestamp).TotalSeconds);
-            }
+                long timestamp = Stopwatch.GetTimestamp();
 
-            return results;
+                GeneratedEmbeddings<Embedding<float>> embeddings = await _embeddingGenerator.GenerateAsync(itemsList.Select(CatalogItemToString));
+                var results = embeddings.Select(m => new Vector(m.Vector[0..EmbeddingDimensions])).ToList();
+
+                var elapsed = Stopwatch.GetElapsedTime(timestamp);
+                activity?.SetTag("catalog.embedding_duration_ms", elapsed.TotalMilliseconds);
+                activity?.SetTag("catalog.embeddings_count", results.Count);
+                activity?.SetTag("catalog.embeddings_dimension", EmbeddingDimensions);
+                activity?.SetTag("catalog.ms_per_embedding", elapsed.TotalMilliseconds / results.Count);
+                activity?.SetStatus(ActivityStatusCode.Ok);
+
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace("Generated {EmbeddingsCount} embeddings in {ElapsedMilliseconds}s", results.Count, elapsed.TotalSeconds);
+                }
+
+                return results;
+            }
+            catch (Exception ex)
+            {
+                activity?.SetExceptionTags(ex);
+                throw;
+            }
         }
 
+        activity?.SetStatus(ActivityStatusCode.Error, "AI not enabled");
+        activity?.SetTag("catalog.error", "AI not enabled");
         return null;
     }
 
     /// <inheritdoc/>
     public async ValueTask<Vector> GetEmbeddingAsync(string text)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("GenerateTextEmbedding");
+        activity?.SetTag("catalog.text", text);
+        
         if (IsEnabled)
         {
-            long timestamp = Stopwatch.GetTimestamp();
-
-            var embedding = await _embeddingGenerator.GenerateEmbeddingVectorAsync(text);
-            embedding = embedding[0..EmbeddingDimensions];
-
-            if (_logger.IsEnabled(LogLevel.Trace))
+            try
             {
-                _logger.LogTrace("Generated embedding in {ElapsedMilliseconds}s: '{Text}'", Stopwatch.GetElapsedTime(timestamp).TotalSeconds, text);
-            }
+                long timestamp = Stopwatch.GetTimestamp();
 
-            return new Vector(embedding);
+                var embedding = await _embeddingGenerator.GenerateEmbeddingVectorAsync(text);
+                embedding = embedding[0..EmbeddingDimensions];
+
+                var elapsed = Stopwatch.GetElapsedTime(timestamp);
+                activity?.SetTag("catalog.embedding_duration_ms", elapsed.TotalMilliseconds);
+                activity?.SetTag("catalog.embedding_size", EmbeddingDimensions);
+                activity?.SetStatus(ActivityStatusCode.Ok);
+
+                if (_logger.IsEnabled(LogLevel.Trace))
+                {
+                    _logger.LogTrace("Generated embedding in {ElapsedMilliseconds}s: '{Text}'", elapsed.TotalSeconds, text);
+                }
+
+                return new Vector(embedding);
+            }
+            catch (Exception ex)
+            {
+                activity?.SetExceptionTags(ex);
+                throw;
+            }
         }
 
+        activity?.SetStatus(ActivityStatusCode.Error, "AI not enabled");
+        activity?.SetTag("catalog.error", "AI not enabled");
         return null;
     }
 

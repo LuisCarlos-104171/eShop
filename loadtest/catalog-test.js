@@ -48,7 +48,7 @@ export default function () {
         // Randomly decide (20% chance) to use a nonexistent ID
         if (Math.random() < 0.2) {
             // Generate a nonexistent ID - using a large, random UUID-like format
-            itemId = `nonexistent-${Math.floor(Math.random() * 1000000)}-${Date.now()}`;
+            itemId = `${Math.floor(Math.random() * 1000000)}${Date.now()}`;
         } else {
             // Use a real ID from the items list
             itemId = items[randomIndex].id.toString();

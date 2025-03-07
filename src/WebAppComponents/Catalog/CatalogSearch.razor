@@ -1,4 +1,6 @@
-﻿@inject CatalogService CatalogService
+﻿@using System.Diagnostics
+@using eShop.ServiceDefaults
+@inject CatalogService CatalogService
 @inject NavigationManager Nav
 
 @if (catalogBrands is not null && catalogItemTypes is not null)
@@ -54,22 +56,67 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var brandsTask = CatalogService.GetBrands();
-        var itemTypesTask = CatalogService.GetTypes();
-        await Task.WhenAll(brandsTask, itemTypesTask);
-        catalogBrands = brandsTask.Result;
-        catalogItemTypes = itemTypesTask.Result;
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("LoadCatalogFilters");
+        
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            
+            var brandsTask = CatalogService.GetBrands();
+            var itemTypesTask = CatalogService.GetTypes();
+            await Task.WhenAll(brandsTask, itemTypesTask);
+            catalogBrands = brandsTask.Result;
+            catalogItemTypes = itemTypesTask.Result;
+            
+            stopwatch.Stop();
+            
+            activity?.SetTag("catalog.brands_count", catalogBrands.Count());
+            activity?.SetTag("catalog.types_count", catalogItemTypes.Count());
+            activity?.SetTag("catalog.load_duration_ms", stopwatch.ElapsedMilliseconds);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+        }
+        catch (Exception ex) 
+        {
+            activity?.SetExceptionTags(ex);
+            throw;
+        }
     }
 
-    private string BrandUri(int? brandId) => Nav.GetUriWithQueryParameters(new Dictionary<string, object?>()
+    private string BrandUri(int? brandId) 
     {
-        { "page", null },
-        { "brand", brandId },
-    });
+        if (BrandId != brandId)
+        {
+            // Track filter change
+            var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("ApplyBrandFilter");
+            activity?.SetTag("catalog.previous_brand", BrandId);
+            activity?.SetTag("catalog.new_brand", brandId);
+            activity?.SetTag("catalog.filter_type", "brand");
+            activity?.SetStatus(ActivityStatusCode.Ok);
+        }
+        
+        return Nav.GetUriWithQueryParameters(new Dictionary<string, object?>()
+        {
+            { "page", null },
+            { "brand", brandId },
+        });
+    }
 
-    private string TypeUri(int? typeId) => Nav.GetUriWithQueryParameters(new Dictionary<string, object?>()
+    private string TypeUri(int? typeId) 
     {
-        { "page", null },
-        { "type", typeId },
-    });
+        if (ItemTypeId != typeId)
+        {
+            // Track filter change
+            var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("ApplyTypeFilter");
+            activity?.SetTag("catalog.previous_type", ItemTypeId);
+            activity?.SetTag("catalog.new_type", typeId);
+            activity?.SetTag("catalog.filter_type", "item_type");
+            activity?.SetStatus(ActivityStatusCode.Ok);
+        }
+        
+        return Nav.GetUriWithQueryParameters(new Dictionary<string, object?>()
+        {
+            { "page", null },
+            { "type", typeId },
+        });
+    }
 }

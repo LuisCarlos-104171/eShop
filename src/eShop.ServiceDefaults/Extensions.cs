@@ -134,7 +134,8 @@ public static partial class Extensions
                     .AddSource(OpenTelemetryCheckoutExtensions.CheckoutActivitySource.Name)
                     .AddSource(OpenTelemetryCheckoutExtensions.OrderingActivitySource.Name)
                     .AddSource(OpenTelemetryCheckoutExtensions.BasketActivitySource.Name)
-                    .AddSource(OpenTelemetryCheckoutExtensions.PaymentActivitySource.Name);
+                    .AddSource(OpenTelemetryCheckoutExtensions.PaymentActivitySource.Name)
+                    .AddSource(OpenTelemetryCheckoutExtensions.CatalogActivitySource.Name);
             });
 
         builder.AddOpenTelemetryExporters();

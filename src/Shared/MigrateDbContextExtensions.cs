@@ -1,4 +1,8 @@
 ﻿using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Hosting;
 
@@ -34,7 +38,11 @@ internal static class MigrateDbContextExtensions
         var scopeServices = scope.ServiceProvider;
         var logger = scopeServices.GetRequiredService<ILogger<TContext>>();
         var context = scopeServices.GetService<TContext>();
-
+        if (context == null)
+        {
+            logger.LogError("Failed to get DbContext instance {DbContextName}", typeof(TContext).Name);
+            return;
+        }
         using var activity = ActivitySource.StartActivity($"Migration operation {typeof(TContext).Name}");
 
         try
@@ -49,8 +57,10 @@ internal static class MigrateDbContextExtensions
         {
             logger.LogError(ex, "An error occurred while migrating the database used on context {DbContextName}", typeof(TContext).Name);
 
-            activity.SetExceptionTags(ex);
-
+            if (activity != null)
+            {
+                activity.SetExceptionTags(ex);
+            }
             throw;
         }
     }
@@ -67,8 +77,10 @@ internal static class MigrateDbContextExtensions
         }
         catch (Exception ex)
         {
-            activity.SetExceptionTags(ex);
-
+            if (activity != null)
+            {
+                activity.SetExceptionTags(ex);
+            }
             throw;
         }
     }

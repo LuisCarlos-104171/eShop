@@ -1,6 +1,8 @@
-﻿using System.Net.Http.Json;
+﻿using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Web;
 using eShop.WebAppComponents.Catalog;
+using eShop.ServiceDefaults;
 
 namespace eShop.WebAppComponents.Services;
 
@@ -16,9 +18,31 @@ public class CatalogService(HttpClient httpClient) : ICatalogService
 
     public async Task<CatalogResult> GetCatalogItems(int pageIndex, int pageSize, int? brand, int? type)
     {
-        var uri = GetAllCatalogItemsUri(remoteServiceBaseUrl, pageIndex, pageSize, brand, type);
-        var result = await httpClient.GetFromJsonAsync<CatalogResult>(uri);
-        return result!;
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("GetCatalogItems");
+        activity?.SetTag("catalog.page_index", pageIndex);
+        activity?.SetTag("catalog.page_size", pageSize);
+        activity?.SetTag("catalog.filter.brand", brand);
+        activity?.SetTag("catalog.filter.type", type);
+        
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var uri = GetAllCatalogItemsUri(remoteServiceBaseUrl, pageIndex, pageSize, brand, type);
+            var result = await httpClient.GetFromJsonAsync<CatalogResult>(uri);
+            stopwatch.Stop();
+            
+            activity?.SetTag("catalog.items_count", result!.Data.Count);
+            activity?.SetTag("catalog.total_items", result!.Count);
+            activity?.SetTag("catalog.duration_ms", stopwatch.ElapsedMilliseconds);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            
+            return result!;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetExceptionTags(ex);
+            throw;
+        }
     }
 
     public async Task<List<CatalogItem>> GetCatalogItems(IEnumerable<int> ids)
@@ -28,11 +52,32 @@ public class CatalogService(HttpClient httpClient) : ICatalogService
         return result!;
     }
 
-    public Task<CatalogResult> GetCatalogItemsWithSemanticRelevance(int page, int take, string text)
+    public async Task<CatalogResult> GetCatalogItemsWithSemanticRelevance(int page, int take, string text)
     {
-        var url = $"{remoteServiceBaseUrl}items/withsemanticrelevance?text={HttpUtility.UrlEncode(text)}&pageIndex={page}&pageSize={take}";
-        var result = httpClient.GetFromJsonAsync<CatalogResult>(url);
-        return result!;
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("GetCatalogItemsWithSemanticRelevance");
+        activity?.SetTag("catalog.page_index", page);
+        activity?.SetTag("catalog.page_size", take);
+        activity?.SetTag("catalog.search_text", text);
+        
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var url = $"{remoteServiceBaseUrl}items/withsemanticrelevance?text={HttpUtility.UrlEncode(text)}&pageIndex={page}&pageSize={take}";
+            var result = await httpClient.GetFromJsonAsync<CatalogResult>(url);
+            stopwatch.Stop();
+            
+            activity?.SetTag("catalog.items_count", result!.Data.Count);
+            activity?.SetTag("catalog.total_items", result!.Count);
+            activity?.SetTag("catalog.search_duration_ms", stopwatch.ElapsedMilliseconds);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            
+            return result!;
+        }
+        catch (Exception ex)
+        {
+            activity?.SetExceptionTags(ex);
+            throw;
+        }
     }
 
     public async Task<IEnumerable<CatalogBrand>> GetBrands()

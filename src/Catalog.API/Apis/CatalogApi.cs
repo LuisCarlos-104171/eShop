@@ -1,9 +1,11 @@
 ﻿using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Pgvector.EntityFrameworkCore;
+using eShop.ServiceDefaults;
 
 namespace eShop.Catalog.API;
 
@@ -128,34 +130,58 @@ public static class CatalogApi
         [Description("The type of items to return")] int? type,
         [Description("The brand of items to return")] int? brand)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity(
+            OpenTelemetryCheckoutExtensions.CatalogOperations.GetItems);
+        
         var pageSize = paginationRequest.PageSize;
         var pageIndex = paginationRequest.PageIndex;
 
-        var root = (IQueryable<CatalogItem>)services.Context.CatalogItems;
-
-        if (name is not null)
+        // Add relevant tags
+        activity?.SetTag("catalog.page_size", pageSize);
+        activity?.SetTag("catalog.page_index", pageIndex);
+        activity?.SetTag("catalog.filter.name", name);
+        activity?.SetTag("catalog.filter.type_id", type);
+        activity?.SetTag("catalog.filter.brand_id", brand);
+        
+        try
         {
-            root = root.Where(c => c.Name.StartsWith(name));
+            var root = (IQueryable<CatalogItem>)services.Context.CatalogItems;
+
+            if (name is not null)
+            {
+                root = root.Where(c => c.Name.StartsWith(name));
+            }
+            if (type is not null)
+            {
+                root = root.Where(c => c.CatalogTypeId == type);
+            }
+            if (brand is not null)
+            {
+                root = root.Where(c => c.CatalogBrandId == brand);
+            }
+
+            var totalItems = await root
+                .LongCountAsync();
+
+            var itemsOnPage = await root
+                .OrderBy(c => c.Name)
+                .Skip(pageSize * pageIndex)
+                .Take(pageSize)
+                .ToListAsync();
+
+            // Add results to span
+            activity?.SetTag("catalog.total_items", totalItems);
+            activity?.SetTag("catalog.items_returned", itemsOnPage.Count);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
         }
-        if (type is not null)
+        catch (Exception ex)
         {
-            root = root.Where(c => c.CatalogTypeId == type);
+            // Set exception information on the span
+            activity?.SetExceptionTags(ex);
+            throw;
         }
-        if (brand is not null)
-        {
-            root = root.Where(c => c.CatalogBrandId == brand);
-        }
-
-        var totalItems = await root
-            .LongCountAsync();
-
-        var itemsOnPage = await root
-            .OrderBy(c => c.Name)
-            .Skip(pageSize * pageIndex)
-            .Take(pageSize)
-            .ToListAsync();
-
-        return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
     }
 
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
@@ -180,21 +206,43 @@ public static class CatalogApi
         [AsParameters] CatalogServices services,
         [Description("The catalog item id")] int id)
     {
-        if (id <= 0)
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity(
+            OpenTelemetryCheckoutExtensions.CatalogOperations.GetItemById);
+        
+        activity?.SetTag("catalog.item.id", id);
+        
+        try
         {
-            return TypedResults.BadRequest<ProblemDetails>(new (){
-                Detail = "Id is not valid"
-            });
+            if (id <= 0)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "Invalid ID");
+                activity?.SetTag("catalog.error", "Invalid ID");
+                return TypedResults.BadRequest<ProblemDetails>(new (){
+                    Detail = "Id is not valid"
+                });
+            }
+
+            var item = await services.Context.CatalogItems.Include(ci => ci.CatalogBrand).SingleOrDefaultAsync(ci => ci.Id == id);
+
+            if (item == null)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "Item not found");
+                activity?.SetTag("catalog.error", "Item not found");
+                return TypedResults.NotFound();
+            }
+
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            activity?.SetTag("catalog.item.name", item.Name);
+            activity?.SetTag("catalog.item.brand", item.CatalogBrand?.Brand);
+            activity?.SetTag("catalog.item.price", item.Price);
+            
+            return TypedResults.Ok(item);
         }
-
-        var item = await services.Context.CatalogItems.Include(ci => ci.CatalogBrand).SingleOrDefaultAsync(ci => ci.Id == id);
-
-        if (item == null)
+        catch (Exception ex)
         {
-            return TypedResults.NotFound();
+            activity?.SetExceptionTags(ex);
+            throw;
         }
-
-        return TypedResults.Ok(item);
     }
 
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
@@ -246,46 +294,95 @@ public static class CatalogApi
         [AsParameters] CatalogServices services,
         [Description("The text string to use when search for related items in the catalog"), Required, MinLength(1)] string text)
     {
+        using var activity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity(
+            OpenTelemetryCheckoutExtensions.CatalogOperations.GetItemsBySemanticRelevance);
+        
         var pageSize = paginationRequest.PageSize;
         var pageIndex = paginationRequest.PageIndex;
 
-        if (!services.CatalogAI.IsEnabled)
+        // Add relevant tags
+        activity?.SetTag("catalog.page_size", pageSize);
+        activity?.SetTag("catalog.page_index", pageIndex);
+        activity?.SetTag("catalog.search_text", text);
+        
+        try
         {
-            return await GetItemsByName(paginationRequest, services, text);
+            if (!services.CatalogAI.IsEnabled)
+            {
+                activity?.SetTag("catalog.ai_enabled", false);
+                activity?.SetTag("catalog.fallback", "text_search");
+                return await GetItemsByName(paginationRequest, services, text);
+            }
+            
+            activity?.SetTag("catalog.ai_enabled", true);
+            
+            // Create child span for vector embedding generation
+            using var embeddingActivity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("GenerateEmbedding");
+            embeddingActivity?.SetTag("catalog.search_text", text);
+            
+            // Create an embedding for the input search
+            var startTime = Stopwatch.GetTimestamp();
+            var vector = await services.CatalogAI.GetEmbeddingAsync(text);
+            var embeddingDuration = Stopwatch.GetElapsedTime(startTime);
+            
+            embeddingActivity?.SetTag("catalog.embedding_duration_ms", embeddingDuration.TotalMilliseconds);
+            embeddingActivity?.SetStatus(ActivityStatusCode.Ok);
+
+            // Get the total number of items
+            var totalItems = await services.Context.CatalogItems
+                .LongCountAsync();
+
+            // Create child span for vector search
+            using var searchActivity = OpenTelemetryCheckoutExtensions.CatalogActivitySource.StartActivity("VectorSearch");
+            searchActivity?.SetTag("catalog.search_text", text);
+            
+            startTime = Stopwatch.GetTimestamp();
+            
+            // Get the next page of items, ordered by most similar (smallest distance) to the input search
+            List<CatalogItem> itemsOnPage;
+            if (services.Logger.IsEnabled(LogLevel.Debug))
+            {
+                var itemsWithDistance = await services.Context.CatalogItems
+                    .Select(c => new { Item = c, Distance = c.Embedding.CosineDistance(vector) })
+                    .OrderBy(c => c.Distance)
+                    .Skip(pageSize * pageIndex)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                services.Logger.LogDebug("Results from {text}: {results}", text, string.Join(", ", itemsWithDistance.Select(i => $"{i.Item.Name} => {i.Distance}")));
+
+                itemsOnPage = itemsWithDistance.Select(i => i.Item).ToList();
+                
+                // Record distances in the span
+                searchActivity?.SetTag("catalog.top_distances", string.Join(",", itemsWithDistance.Take(3).Select(i => i.Distance.ToString("F3"))));
+            }
+            else
+            {
+                itemsOnPage = await services.Context.CatalogItems
+                    .OrderBy(c => c.Embedding.CosineDistance(vector))
+                    .Skip(pageSize * pageIndex)
+                    .Take(pageSize)
+                    .ToListAsync();
+            }
+            
+            var searchDuration = Stopwatch.GetElapsedTime(startTime);
+            searchActivity?.SetTag("catalog.search_duration_ms", searchDuration.TotalMilliseconds);
+            searchActivity?.SetTag("catalog.items_found", itemsOnPage.Count);
+            searchActivity?.SetStatus(ActivityStatusCode.Ok);
+            
+            // Add results to parent span
+            activity?.SetTag("catalog.total_items", totalItems);
+            activity?.SetTag("catalog.items_returned", itemsOnPage.Count);
+            activity?.SetTag("catalog.total_duration_ms", embeddingDuration.TotalMilliseconds + searchDuration.TotalMilliseconds);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+
+            return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
         }
-
-        // Create an embedding for the input search
-        var vector = await services.CatalogAI.GetEmbeddingAsync(text);
-
-        // Get the total number of items
-        var totalItems = await services.Context.CatalogItems
-            .LongCountAsync();
-
-        // Get the next page of items, ordered by most similar (smallest distance) to the input search
-        List<CatalogItem> itemsOnPage;
-        if (services.Logger.IsEnabled(LogLevel.Debug))
+        catch (Exception ex)
         {
-            var itemsWithDistance = await services.Context.CatalogItems
-                .Select(c => new { Item = c, Distance = c.Embedding.CosineDistance(vector) })
-                .OrderBy(c => c.Distance)
-                .Skip(pageSize * pageIndex)
-                .Take(pageSize)
-                .ToListAsync();
-
-            services.Logger.LogDebug("Results from {text}: {results}", text, string.Join(", ", itemsWithDistance.Select(i => $"{i.Item.Name} => {i.Distance}")));
-
-            itemsOnPage = itemsWithDistance.Select(i => i.Item).ToList();
+            activity?.SetExceptionTags(ex);
+            throw;
         }
-        else
-        {
-            itemsOnPage = await services.Context.CatalogItems
-                .OrderBy(c => c.Embedding.CosineDistance(vector))
-                .Skip(pageSize * pageIndex)
-                .Take(pageSize)
-                .ToListAsync();
-        }
-
-        return TypedResults.Ok(new PaginatedItems<CatalogItem>(pageIndex, pageSize, totalItems, itemsOnPage));
     }
 
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
