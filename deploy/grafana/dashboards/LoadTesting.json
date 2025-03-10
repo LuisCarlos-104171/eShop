@@ -53,7 +53,7 @@
             },
             "gridPos": {
                 "h": 8,
-                "w": 7,
+                "w": 12,
                 "x": 0,
                 "y": 0
             },
@@ -89,7 +89,7 @@
                     "useBackend": false
                 }
             ],
-            "title": "Identity Gateway",
+            "title": "Identity Gateway CPU Load",
             "type": "gauge"
         },
         {
@@ -124,8 +124,8 @@
             },
             "gridPos": {
                 "h": 8,
-                "w": 7,
-                "x": 7,
+                "w": 12,
+                "x": 12,
                 "y": 0
             },
             "id": 3,
@@ -160,7 +160,7 @@
                     "useBackend": false
                 }
             ],
-            "title": "Identity Gateway",
+            "title": "Web App CPU Load",
             "type": "gauge"
         },
         {
@@ -257,7 +257,7 @@
                     "useBackend": false
                 }
             ],
-            "title": "Panel Title",
+            "title": "Concurrent Users",
             "type": "timeseries"
         }
     ],
@@ -276,6 +276,6 @@
     "timezone": "browser",
     "title": "Load Monitoring",
     "uid": "beffauruzl9tsa",
-    "version": 5,
+    "version": 2,
     "weekStart": ""
 }

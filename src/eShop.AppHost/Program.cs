@@ -17,23 +17,25 @@ var postgres = builder.AddPostgres("postgres")
 var jaeger = builder.AddContainer("jaeger", "jaegertracing/jaeger", "2.3.0")
     .WithArgs("--config", "/etc/jaeger/config.yml")
     .WithBindMount("../../deploy/jaeger", "/etc/jaeger")
-    .WithEndpoint(16687, 16686, name: "jaeger-ui")         // UI (changed host port)
-    .WithEndpoint(14251, 14250, name: "jaeger-model")      // Model (changed host port)
-    .WithEndpoint(14269, 14268, name: "jaeger-collector")  // Collector HTTP (changed host port)
-    .WithEndpoint(6832, 6831, scheme: "udp", name: "jaeger-agent"); // Agent (changed host port)
+    .WithEndpoint(16687, 16686, name: "jaeger-ui")         // UI
+    .WithEndpoint(14251, 14250, name: "jaeger-model")      // Model
+    .WithEndpoint(14269, 14268, name: "jaeger-collector")  // Collector HTTP
+    .WithEndpoint(6832, 6831, scheme: "udp", name: "jaeger-agent") // Agent
+    .WithLifetime(ContainerLifetime.Persistent);
 
 // Add OpenTelemetry collector
 var otel = builder.AddContainer("otel-collector", "otel/opentelemetry-collector-contrib", "0.120.0")
     .WithBindMount("../../deploy/otel-collector.yaml", "/etc/otel-collector.yaml")
     .WithArgs("--config", "/etc/otel-collector.yaml")
-    .WithEndpoint(4319, 4317, name: "otlp-grpc")       // OTLP gRPC (changed host port)
-    .WithEndpoint(4320, 4318, name: "otlp-http")       // OTLP HTTP (changed host port)
-    .WithEndpoint(8890, 8889, name: "prometheus-port"); // Prometheus metrics (changed host port)
+    .WithEndpoint(4319, 4317, name: "otlp-grpc")       // OTLP gRPC
+    .WithEndpoint(4320, 4318, name: "otlp-http")       // OTLP HTTP
+    .WithEndpoint(8890, 8889, name: "prometheus-port"); // Prometheus metrics
 
 // Add Prometheus for metrics
 var prometheus = builder.AddContainer("prometheus", "prom/prometheus", "v2.47.2")
     .WithBindMount("../../deploy/prometheus", "/etc/prometheus")
-    .WithEndpoint(9091, 9090, name: "prometheus-ui"); // Changed host port
+    .WithEndpoint(9091, 9090, name: "prometheus-ui")
+    .WithLifetime(ContainerLifetime.Persistent);
 
 // Add Grafana for visualization
 var grafana = builder.AddContainer("grafana", "grafana/grafana-oss")
@@ -47,7 +49,7 @@ var webhooksDb = postgres.AddDatabase("webhooksdb");
 
 var launchProfileName = ShouldUseHttpForEndpoints() ? "http" : "https";
 
-// Set OpenTelemetry environment variables - update to new port
+// Set OpenTelemetry environment variables
 var otelExporterOtlpEndpoint = "http://localhost:4319";
 
 // Services
