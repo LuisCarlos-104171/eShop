@@ -63,32 +63,8 @@ public static partial class Extensions
             meter.AddMeter("eShop.Checkout.Metrics");
         });
         
-        // Register checkout metrics with a single meter
-        services.AddSingleton(sp => 
-        {
-            var meter = new Meter("eShop.Checkout.Metrics", "1.0.0");
-            
-            // Register counters for the checkout process
-            meter.CreateCounter<long>("checkout_initiated_total", 
-                description: "Count of checkout processes initiated");
-                
-            meter.CreateCounter<long>("orders_created_total", 
-                description: "Count of orders successfully created");
-                
-            meter.CreateCounter<long>("payments_processed_total", 
-                description: "Count of payments processed");
-                
-            meter.CreateCounter<long>("payments_succeeded_total", 
-                description: "Count of payments that succeeded");
-                
-            meter.CreateCounter<long>("payments_failed_total", 
-                description: "Count of payments that failed");
-                
-            meter.CreateHistogram<double>("checkout_duration_seconds", 
-                description: "Duration of the checkout process in seconds");
-                
-            return meter;
-        });
+        // Register the checkout metrics service
+        services.AddSingleton<CheckoutMetrics>();
         
         return services;
     }

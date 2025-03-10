@@ -12,7 +12,8 @@ public class BasketState(
     BasketService basketService,
     CatalogService catalogService,
     OrderingService orderingService,
-    AuthenticationStateProvider authenticationStateProvider) : IBasketState
+    AuthenticationStateProvider authenticationStateProvider,
+    CheckoutMetrics checkoutMetrics) : IBasketState
 {
     private Task<IReadOnlyCollection<BasketItem>>? _cachedBasket;
     private HashSet<BasketStateChangedSubscription> _changeSubscriptions = new();
@@ -91,6 +92,12 @@ public class BasketState(
         using var checkoutActivity = OpenTelemetryCheckoutExtensions.CheckoutActivitySource.StartActivity(
             OpenTelemetryCheckoutExtensions.CheckoutOperations.InitiateCheckout);
         
+        // Start timer for checkout duration metric
+        var startTime = DateTime.UtcNow;
+        
+        // Record checkout initiated in metrics
+        checkoutMetrics.RecordCheckoutInitiated();
+        
         if (checkoutInfo.RequestId == default)
         {
             checkoutInfo.RequestId = Guid.NewGuid();
@@ -159,15 +166,29 @@ public class BasketState(
                     Items: [.. orderItems]);
                 
                 await orderingService.CreateOrder(request, checkoutInfo.RequestId);
+                
+                // Record successful order creation
+                checkoutMetrics.RecordOrderCreated();
+                
                 await DeleteBasketAsync();
                 
                 submitActivity?.SetStatus(ActivityStatusCode.Ok);
             }
             
             checkoutActivity?.SetStatus(ActivityStatusCode.Ok);
+            
+            // Record successful checkout completion
+            checkoutMetrics.RecordCheckoutSuccess();
+            
+            // Record checkout duration
+            var duration = (DateTime.UtcNow - startTime).TotalSeconds;
+            checkoutMetrics.RecordCheckoutDuration(duration);
         }
         catch (Exception ex)
         {
+            // Record checkout failure
+            checkoutMetrics.RecordCheckoutFailure();
+            
             // Record the exception in the telemetry
             checkoutActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw; // Re-throw to preserve the original exception
