@@ -1,22 +1,23 @@
 {
-  "name": "eshop",
-  "version": "1.0.0",
-  "description": "A reference .NET application implementing an eCommerce web site using a services-based architecture.",
-  "directories": {
-    "test": "tests"
-  },
-  "scripts": {
-    "loadtest": "k6 run loadtest/loadtest.js",
-    "loadtest:catalog": "k6 run loadtest/catalog-test.js",
-    "loadtest:ui-e2e": "k6 run loadtest/ui-e2e-test.js",
-    "loadtest:all": "npm run loadtest && npm run loadtest:catalog && npm run loadtest:ui-e2e"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@playwright/test": "^1.42.1",
-    "@types/node": "^20.11.25",
-    "dotenv": "^16.4.5"
-  }
+    "name": "eshop",
+    "version": "1.0.0",
+    "description": "A reference .NET application implementing an eCommerce web site using a services-based architecture.",
+    "directories": {
+        "test": "tests"
+    },
+    "scripts": {
+        "loadtest": "k6 run loadtest/loadtest.js",
+        "loadtest:catalog": "k6 run loadtest/catalog-test.js",
+        "loadtest:ui-e2e": "k6 run loadtest/ui-e2e-test.js",
+        "loadtest:ui": "k6 run loadtest/ui-test.js",
+        "loadtest:all": "npm run loadtest && npm run loadtest:catalog && npm run loadtest:ui-e2e && npm run loadtest:ui"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@playwright/test": "^1.42.1",
+        "@types/node": "^20.11.25",
+        "dotenv": "^16.4.5"
+    }
 }
