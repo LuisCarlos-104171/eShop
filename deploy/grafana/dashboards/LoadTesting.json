@@ -257,7 +257,7 @@
                     "useBackend": false
                 }
             ],
-            "title": "Concurrent Users",
+            "title": "Concurrent User Rate",
             "type": "timeseries"
         }
     ],
