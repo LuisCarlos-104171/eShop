@@ -10,6 +10,8 @@ var rabbitMq = builder.AddRabbitMQ("eventbus")
 var postgres = builder.AddPostgres("postgres")
     .WithImage("ankane/pgvector")
     .WithImageTag("latest")
+    .WithBindMount("../../deploy/postgres/init-roles.sql", "/docker-entrypoint-initdb.d/init-roles.sql")
+    .WithEnvironment("POSTGRES_HOST_AUTH_METHOD", "trust")
     .WithLifetime(ContainerLifetime.Persistent);
 
 // Add Jaeger for distributed tracing with unique endpoint names
@@ -56,7 +58,9 @@ var otelExporterOtlpEndpoint = "http://localhost:4319";
 var identityApi = builder.AddProject<Projects.Identity_API>("identity-api", launchProfileName)
     .WithExternalHttpEndpoints()
     .WithEnvironment(callback => callback.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelExporterOtlpEndpoint)
-    .WithReference(identityDb);
+    .WithReference(identityDb)
+    .WaitFor(postgres)
+    .WithEnvironment("ConnectionStrings__IdentityDB", "Host=postgres;Database=identitydb;Username=identity_user;Password=Identity_Pass123");
 
 var identityEndpoint = identityApi.GetEndpoint(launchProfileName);
 
@@ -64,24 +68,31 @@ var basketApi = builder.AddProject<Projects.Basket_API>("basket-api")
     .WithReference(redis)
     .WithEnvironment(callback => callback.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelExporterOtlpEndpoint)
     .WithReference(rabbitMq).WaitFor(rabbitMq)
+    .WaitFor(postgres)
     .WithEnvironment("Identity__Url", identityEndpoint);
 
 var catalogApi = builder.AddProject<Projects.Catalog_API>("catalog-api")
     .WithReference(rabbitMq).WaitFor(rabbitMq)
     .WithEnvironment(callback => callback.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelExporterOtlpEndpoint)
-    .WithReference(catalogDb);
+    .WithReference(catalogDb)
+    .WaitFor(postgres)
+    .WithEnvironment("ConnectionStrings__CatalogDB", "Host=postgres;Database=catalogdb;Username=catalog_user;Password=Catalog_Pass123");
 
 var orderingApi = builder.AddProject<Projects.Ordering_API>("ordering-api")
     .WithReference(rabbitMq).WaitFor(rabbitMq)
+    .WaitFor(postgres)
     .WithReference(orderDb).WaitFor(orderDb)
     .WithEnvironment(callback => callback.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelExporterOtlpEndpoint)
     .WithHttpHealthCheck("/health")
-    .WithEnvironment("Identity__Url", identityEndpoint);
+    .WithEnvironment("Identity__Url", identityEndpoint)
+    .WithEnvironment("ConnectionStrings__OrderingDB", "Host=postgres;Database=orderingdb;Username=ordering_user;Password=Ordering_Pass123");
 
 builder.AddProject<Projects.OrderProcessor>("order-processor")
     .WithReference(rabbitMq).WaitFor(rabbitMq)
+    .WaitFor(postgres)
     .WithReference(orderDb)
     .WithEnvironment(callback => callback.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelExporterOtlpEndpoint)
+    .WithEnvironment("ConnectionStrings__OrderingDB", "Host=postgres;Database=orderingdb;Username=ordering_user;Password=Ordering_Pass123")
     .WaitFor(orderingApi); // wait for the orderingApi to be ready because that contains the EF migrations
 
 builder.AddProject<Projects.PaymentProcessor>("payment-processor")
@@ -90,9 +101,11 @@ builder.AddProject<Projects.PaymentProcessor>("payment-processor")
 
 var webHooksApi = builder.AddProject<Projects.Webhooks_API>("webhooks-api")
     .WithReference(rabbitMq).WaitFor(rabbitMq)
+    .WaitFor(postgres)
     .WithReference(webhooksDb)
     .WithEnvironment(callback => callback.EnvironmentVariables["OTEL_EXPORTER_OTLP_ENDPOINT"] = otelExporterOtlpEndpoint)
-    .WithEnvironment("Identity__Url", identityEndpoint);
+    .WithEnvironment("Identity__Url", identityEndpoint)
+    .WithEnvironment("ConnectionStrings__WebhooksDB", "Host=postgres;Database=webhooksdb;Username=webhooks_user;Password=Webhooks_Pass123");
 
 // Reverse proxies
 builder.AddProject<Projects.Mobile_Bff_Shopping>("mobile-bff")
