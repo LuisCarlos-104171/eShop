@@ -1,10 +1,21 @@
-# eShop Application
+# eShop - Microservices Reference Application
 
-This README provides instructions for building, running, and monitoring the eShop application with OpenTelemetry integration and Grafana dashboards.
+eShop is a modern cloud-native reference application demonstrating a microservices architecture design pattern with .NET technologies.
 
-## Building and Running the eShop Environment
+## Architecture Overview
 
-The eShop application can be built and run with a single command:
+eShop is built as a container-based application leveraging microservices architectural patterns. It includes:
+
+- Multiple backend microservices (Basket.API, Catalog.API, etc.)
+- A cross-platform client application built with .NET MAUI
+- Event-driven communication between services using RabbitMQ
+- Container orchestration readiness
+- Integrated observability with OpenTelemetry
+- Data persistence with Redis (Basket) and PostgreSQL (Catalog)
+
+## Building and Running the Application
+
+To build and run the eShop application with all its components:
 
 ```bash
 dotnet run --project src/eShop.AppHost/eShop.AppHost.csproj
@@ -12,40 +23,80 @@ dotnet run --project src/eShop.AppHost/eShop.AppHost.csproj
 
 This command will:
 - Build all necessary projects
-- Configure and start all microservices
-- Set up the required infrastructure components
-- Launch the application
+- Start all microservices
+- Set up required infrastructure components
+- Configure networking and dependencies
 
-## OpenTelemetry Configuration
+## Infrastructure Components
 
-The eShop application comes pre-configured with OpenTelemetry collectors and exporters to monitor application performance and behavior.
+The application includes the following infrastructure components:
 
-### OpenTelemetry Collectors/Exporters
+- **PostgreSQL**: For persistent data storage
+- **Redis**: For distributed caching and basket storage
+- **RabbitMQ**: For event-driven messaging between services
+- **Jaeger**: For distributed tracing
+- **Prometheus**: For metrics collection
+- **Grafana**: For monitoring and visualization
 
-The OpenTelemetry components are automatically launched when you start the application. No additional configuration is needed for basic usage.
+## Monitoring and Observability
 
-If you need to modify the OpenTelemetry configuration:
+### OpenTelemetry Integration
 
-1. The collector configurations can be found in the appropriate configuration files within the project
-2. By default, telemetry data is exported to Jaeger for distributed tracing
+The application comes with built-in OpenTelemetry instrumentation:
 
-## Grafana Dashboard
+- Distributed tracing across all services
+- Metrics collection for performance monitoring
+- Logging integration
 
-The eShop application includes a pre-configured Grafana dashboard for visualizing monitoring data.
+### Accessing Monitoring Tools
 
-### Accessing Grafana
+**Grafana Dashboard**:
+- URL: [http://localhost:3001](http://localhost:3001)
+- Credentials: 
+  - Username: `admin` 
+  - Password: `admin`
 
-Once the application is running:
+**Jaeger Distributed Tracing**:
+- URL: [http://localhost:16687](http://localhost:16687)
 
-1. Open your browser and navigate to: [http://localhost:3001](http://localhost:3001)
-2. Log in with the following credentials:
-   - Username: `admin`
-   - Password: `admin`
-3. The dashboard should be available in the Dashboards section
+## Microservices
 
-### Jaeger for Distributed Tracing
+The application consists of the following microservices:
 
-The application also includes Jaeger for distributed tracing:
+- **Basket API**: Shopping basket management
+- **Catalog API**: Product catalog management
+- **ClientApp**: Cross-platform mobile and desktop client application
 
-1. Open your browser and navigate to: [http://localhost:16687](http://localhost:16687)
-2. Use the interface to explore traces across the different microservices
+Each microservice is independently deployable and follows domain-driven design principles.
+
+## Development Environment Setup
+
+### Prerequisites
+
+- .NET 9.0 SDK or later
+- Docker Desktop
+- Visual Studio 2022 or Visual Studio Code
+
+### Running in Development Mode
+
+For local development, you can also run individual services using:
+
+```bash
+dotnet run --project src/{ServiceName}/{ServiceName}.csproj
+```
+
+## API Documentation
+
+API documentation is automatically generated using OpenAPI/Swagger. When running the application, you can access the Swagger UI for each service at:
+
+```
+http://{service-host}:{service-port}/swagger
+```
+
+## Contributing
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on contributing to this project.
+
+## License
+
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
