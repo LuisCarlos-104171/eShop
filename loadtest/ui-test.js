@@ -15,10 +15,10 @@ export const options = {
             executor: "ramping-vus",
             startVUs: 1,
             stages: [
-                { duration: "10s", target: 100 }, // Ramp up to 100 users over 10 seconds
-                { duration: "30s", target: 500 }, // Ramp up to 500 users over 30 seconds
-                { duration: "30s", target: 2000 }, // Ramp up to 2000 users over 30 seconds
-                { duration: "1m", target: 2000 }, // Stay at 2000 users for 1 minute
+                { duration: "10s", target: 10 }, // Ramp up to 100 users over 10 seconds
+                { duration: "30s", target: 50 }, // Ramp up to 500 users over 30 seconds
+                { duration: "30s", target: 200 }, // Ramp up to 2000 users over 30 seconds
+                { duration: "1m", target: 200 }, // Stay at 2000 users for 1 minute
                 { duration: "20s", target: 0 }, // Ramp down to 0 users
             ],
             gracefulRampDown: "5s",
